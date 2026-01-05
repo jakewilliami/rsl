@@ -1,0 +1,15 @@
+[package]
+name = "rsl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.54", features = ["cargo", "wrap_help", "derive"] }
+clipboard-anywhere = "0.2.3"
+copypasta-ext = "0.4.4"
+derive_more = { version = "2.1.1", features = ["display"] }
+psl = "2.1.175"
+reqwest = "0.13.1"
+tokio = { version = "1.49.0", features = ["full"] }
+ua_generator = { git = "https://github.com/spider-rs/ua_generator.git", version = "0.5.42" }
+url = "2.5.7"

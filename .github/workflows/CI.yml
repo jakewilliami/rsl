@@ -1,0 +1,81 @@
+name: CI
+# Run on master, tags, or any pull request
+on:
+  push:
+    branches:
+      - master
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+jobs:
+  meta:
+    # Inspiration:
+    #   github.com/sharkdp/fd/blob/b7fe2ce9/.github/workflows/CICD.yml#L60-L65
+    name: Project Metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          echo "name=$(uvx --from=toml-cli toml get --toml-path=Cargo.toml package.name)" | tee -a $GITHUB_OUTPUT
+          echo "version=$(uvx --from=toml-cli toml get --toml-path=Cargo.toml package.version)" | tee -a $GITHUB_OUTPUT
+    outputs:
+      name: ${{ steps.crate_metadata.outputs.name }}
+      version: ${{ steps.crate_metadata.outputs.version }}
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@latest
+      - uses: extractions/setup-just@v3  # or taiki-e/install-action@just
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1  # or dtolnay/rust-toolchain@stable
+
+      # Adapted from:
+      #   github.com/FluxML/Flux.jl/blob/7be1ca7a/.github/workflows/JuliaFormatter.yml
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            file_change:
+              - added|modified: '**/*'
+      - run: just fmt
+      - name: Check formatting diff
+        if: steps.filter.outputs.file_change == 'true'
+        run: |
+          git diff --color=always --exit-code
+
+  build:
+    name: Build Project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: extractions/setup-just@v1  # or taiki-e/install-action@just
+      - uses: actions-rust-lang/setup-rust-toolchain@v1  # or dtolnay/rust-toolchain@stable
+      - run: just build
+
+  test:
+    name: Test Project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: extractions/setup-just@v1  # or taiki-e/install-action@just
+      - uses: actions-rust-lang/setup-rust-toolchain@v1  # or dtolnay/rust-toolchain@stable
+      - run: just test
+
+  sniff:
+    name: Truffle Hog (Secret Sniffer)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
