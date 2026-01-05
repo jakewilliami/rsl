@@ -1,6 +1,11 @@
+// Structure of `clean` submodule inspired by:
+//   <https://github.com/jakewilliami/citati/tree/8bb1e472/src/source>
+
 use std::error::Error;
 
 use url::Url;
+
+mod reddit;
 
 // Error type for clean URL function
 #[derive(Debug, derive_more::Display)]
@@ -28,61 +33,35 @@ impl From<url::ParseError> for CleanUrlError {
     }
 }
 
+// Trait for platform-specific URL cleaners
+trait UrlCleaner {
+    // Clean the URL according to platform-specific rules
+    fn clean(&self, url: &mut Url) -> Result<(), CleanUrlError>;
+}
+
 // Clean URL
 pub fn clean_url(url: &str) -> Result<String, CleanUrlError> {
-    // Step 0: parse URL
+    // Step 1: parse URL
     let mut url = Url::parse(url)?;
 
-    // Step 1: confirm the scheme is http/https
+    // Step 2: validate scheme
     let scheme = url.scheme();
     if scheme != "https" && scheme != "http" {
         return Err(CleanUrlError::UnsupportedUrlScheme);
     }
 
-    // Step 2: verify host/domain is Reddit
+    // Step 3: dispatch to defined URL cleaner based on domain name
     let host = url.host_str().expect("url host is valid");
-    match psl::domain(host.as_bytes()) {
-        Some(domain) => {
-            if domain != "reddit.com" {
-                return Err(CleanUrlError::UnsupportedUrlHost);
-            }
-        }
+    let cleaner = match psl::domain_str(host) {
+        Some(domain) => match domain {
+            "reddit.com" => reddit::RedditCleaner,
+            _ => return Err(CleanUrlError::UnsupportedUrlHost),
+        },
         _ => return Err(CleanUrlError::UnknownDomain),
-    }
+    };
 
-    // Step 3: remove query parameters
-    url.set_query(None);
-
-    // Step 4: remove trailing slash if any (provides no information)
-    url.path_segments_mut()
-        .map_err(|_| CleanUrlError::PathSegmentsError)?
-        .pop_if_empty(); // remove trailing slash if present
-
-    // Step 5: possibly remove trailing path (additional post information)
-    let segments: Vec<_> = url
-        .path_segments()
-        .ok_or(CleanUrlError::PathSegmentsError)?
-        .collect();
-
-    // https://www.reddit.com/r/<sub>/comments/<post_id>/<post_short_name> (optional short name)
-    let is_post_with_short_name = matches!(segments.as_slice(), ["r", _, "comments", _, _]);
-    let is_post = is_post_with_short_name || matches!(segments.as_slice(), ["r", _, "comments", _]);
-
-    // https://www.reddit.com/r/<sub>/comments/<post_id>/comment/<comment_id>
-    let is_comment = matches!(segments.as_slice(), ["r", _, "comments", _, "comment", _]);
-
-    if !is_post && !is_comment {
-        return Err(CleanUrlError::UnsupportedUrlPath);
-    }
-
-    // If the URL is a post, remove its short name (final segment)
-    if is_post_with_short_name {
-        url.path_segments_mut()
-            .map_err(|_| CleanUrlError::PathSegmentsError)?
-            .pop();
-    }
-
-    // Final step: return as String; URL has now been cleaned
+    // Final step: apply cleaner and return modified URL
+    cleaner.clean(&mut url)?;
     Ok(url.to_string())
 }
 
