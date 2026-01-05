@@ -5,26 +5,15 @@ pub struct RedditCleaner;
 
 impl UrlCleaner for RedditCleaner {
     fn clean(&self, url: &mut Url) -> Result<(), CleanUrlError> {
-        // Step 1: verify host/domain is Reddit
-        let host = url.host_str().expect("url host is valid");
-        match psl::domain(host.as_bytes()) {
-            Some(domain) => {
-                if domain != "reddit.com" {
-                    return Err(CleanUrlError::UnsupportedUrlHost);
-                }
-            }
-            _ => return Err(CleanUrlError::UnknownDomain),
-        }
-
-        // Step 2: remove query parameters
+        // Step 1: remove query parameters
         url.set_query(None);
 
-        // Step 3: remove trailing slash if any (provides no information)
+        // Step 2: remove trailing slash if any (provides no information)
         url.path_segments_mut()
             .map_err(|_| CleanUrlError::PathSegmentsError)?
             .pop_if_empty(); // remove trailing slash if present
 
-        // Step 4: possibly remove trailing path (additional post information)
+        // Step 3: possibly remove trailing path (additional post information)
         let segments: Vec<_> = url
             .path_segments()
             .ok_or(CleanUrlError::PathSegmentsError)?
