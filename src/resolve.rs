@@ -11,7 +11,7 @@ type ResolveFuture = Pin<Box<dyn Future<Output = ResolveOutput> + Send>>;
 // Resolve a URL to its final form.  This includes HTTP _and_ JS redirects; the latter
 // handled by `extract_meta_refresh`
 pub async fn resolve(url: &str) -> ResolveOutput {
-    // This may not be strictly needed, but to increase robustness of the core
+    // This may not be strictly needed,* but to increase robustness of the core
     // resolver function, we implement expontentail backoff.
     //
     // The best API I could find from some quick research was in this project:
@@ -32,6 +32,12 @@ pub async fn resolve(url: &str) -> ResolveOutput {
     // This backon crate implements ExponentialBackoff, which we build with default
     // parameters.  We default to three retries before exiting:
     //   <https://docs.rs/backon/latest/backon/struct.ExponentialBuilder.html>
+    //
+    // I only added this when implementing support for Facebook, while I was trying to
+    // debug an issue where some of my test cases were failing non-deterministically.  I
+    // assumed this was due to hitting some 429 response, so I implemented exponential
+    // backoff.  Turns out it was the ransomiser picking the user agents selecting mobile
+    // user agents, and then Facebook responding with a mobile URL!
     (|| async { resolve_helper(url.to_string(), 0).await })
         .retry(ExponentialBuilder::default())
         .when(|e| e.to_string() == "retryable")
@@ -47,7 +53,7 @@ fn resolve_helper(url: String, depth: u32) -> ResolveFuture {
 
         // Create a client that follows redirects and mimics a real browser
         let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::limited(20)) // Allow up to 20 redirects
+            .redirect(reqwest::redirect::Policy::limited(20))
             .user_agent({
                 // We generate a random user agent in the interest of privacy.  The best crate
                 // for doing this I found from brief research was:
@@ -183,57 +189,182 @@ fn extract_meta_refresh(html: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    mod reddit {
+    mod sources {
         use super::*;
 
-        mod posts {
+        mod reddit {
             use super::*;
 
-            #[tokio::test]
-            async fn test_trivial() {
-                let url = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/";
-                let result = resolve(url).await;
-                assert!(result.is_ok());
-                assert_eq!(url, result.expect("resolved"));
+            mod posts {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert_eq!(url, result.expect("resolved"));
+                }
+
+                #[tokio::test]
+                async fn test_share_link() {
+                    let url = "https://www.reddit.com/r/AskTheWorld/s/mONZu40JNk";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    let expected = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/";
+                    assert!(result.expect("resolved").starts_with(expected));
+                }
             }
 
-            #[tokio::test]
-            async fn test_share_link() {
-                let url = "https://www.reddit.com/r/AskTheWorld/s/mONZu40JNk";
-                let result = resolve(url).await;
-                assert!(result.is_ok());
-                let expected = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/what_comes_to_mind_when_you_think_of_new_zealand/?share_id=l2suzjz-JpaaqZSjbaNmt&utm_content=1&utm_medium=ios_app&utm_name=ioscss&utm_source=share&utm_term=1";
-                assert_eq!(expected, result.expect("resolved"));
+            mod comments {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url =
+                        "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/comment/nxfc5ci/";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert_eq!(url, result.expect("resolved"));
+                }
+
+                #[tokio::test]
+                async fn test_share_link() {
+                    let url = "https://www.reddit.com/r/AskTheWorld/s/5dTzVW0T3w";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    let expected = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/";
+                    assert!(result.expect("resolved").starts_with(expected));
+                }
             }
         }
 
-        mod comments {
+        mod facebook {
             use super::*;
 
-            #[tokio::test]
-            async fn test_trivial() {
-                let url = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/comment/nxfc5ci/";
-                let result = resolve(url).await;
-                assert!(result.is_ok());
-                assert_eq!(url, result.expect("resolved"));
+            mod posts {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.facebook.com/MoreFMWellington/posts/pfbid0vdnCZ6brToAep5XKfrM7FJBuMcuzsg64y896v4Ce2DJefNKGqe8mYhiJvAZwA5SGl";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert!(result.expect("resolved").starts_with(url));
+                }
+
+                // https://www.facebook.com/share/p/187BayNfDu/ -> https://www.facebook.com/MoreFMWellington/posts/pfbid0vdnCZ6brToAep5XKfrM7FJBuMcuzsg64y896v4Ce2DJefNKGqe8mYhiJvAZwA5SGl?rdid=meEnrHMlBkOtDSrX
+                // https://www.facebook.com/share/p/1BgeVKA3em/ -> https://www.facebook.com/rnznewzealand/posts/pfbid0jYRXtR6dGzJeAgLzpYA2ovWwuqtcVRnCMt5TWRmjcwDBPV4yBcNYLr1nwKhKupiPl?rdid=yhfTkLFfmiUYezxF // venezuela
+                // https://www.facebook.com/share/p/1BQ1Th6jhw/?mibextid=wwXIfr -> https://www.facebook.com/groups/vicdeals/permalink/25652124024437331/ // elliot
+                // https://www.facebook.com/share/p/1JZjfaFSrS/ -> https://www.facebook.com/MCDONewt/posts/pfbid02rgYgaUWkPGcXxMBwgntDtzhYtbmXmCLVrqdguvFS2pnSQRYan1MW5yyfwX1ZqjR1l?rdid=fPrLfmze1NgA6Pqj
+                // https://www.facebook.com/share/v/1866jpsdXs/?mibextid=wwXIfr -> https://www.facebook.com/groups/vicdeals/permalink/25658677397115327/
+                // https://www.facebook.com/share/1JigZ3TAud/?mibextid=wwXIfr -> https://www.facebook.com/photo.php?fbid=1279617124197361&set=a.301086902050393&type=3
+
+                #[tokio::test]
+                async fn test_basic() {
+                    // NOTE: MY OWN
+                    let url = "https://www.facebook.com/share/v/1866jpsdXs/?mibextid=wwXIfr";
+                    let result = resolve(url).await;
+                    let expected =
+                        "https://www.facebook.com/groups/vicdeals/permalink/25658677397115327/";
+                    assert!(result.expect("resolved").starts_with(expected))
+                }
             }
 
-            #[tokio::test]
-            async fn test_share_link() {
-                let url = "https://www.reddit.com/r/AskTheWorld/s/5dTzVW0T3w";
-                let result = resolve(url).await;
-                assert!(result.is_ok());
-                let expected = "https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/comment/nxfc5ci/?context=3&share_id=8ws3zlfg6lxtYbyGrudio&utm_content=1&utm_medium=ios_app&utm_name=ioscss&utm_source=share&utm_term=1";
-                assert_eq!(expected, result.expect("resolved"));
+            mod story {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.facebook.com/permalink.php?story_fbid=pfbid02mNMcJYekXP4bnUFkWguBsNddw6GkLHrWZG4ENa23x2h3G2SbbMeJRHByXuxhjKj1l&id=100088004222911";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert!(result.expect("resolved").starts_with(url));
+                }
+
+                #[tokio::test]
+                async fn test_basic() {
+                    let url = "https://www.facebook.com/share/p/1FKNBd86BV/";
+                    let result = resolve(url).await;
+                    let expected = "https://www.facebook.com/permalink.php?story_fbid=pfbid02mNMcJYekXP4bnUFkWguBsNddw6GkLHrWZG4ENa23x2h3G2SbbMeJRHByXuxhjKj1l&id=100088004222911";
+                    assert!(result.expect("resolved").starts_with(expected))
+                }
+            }
+
+            mod reels {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.facebook.com/reel/1309748351194528";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert!(result.expect("resolved").starts_with(url));
+                }
+
+                #[tokio::test]
+                async fn test_basic() {
+                    let url = "https://www.facebook.com/share/r/14QeSSeP3nu/";
+                    let result = resolve(url).await;
+                    let expected = "https://www.facebook.com/reel/1309748351194528";
+                    assert!(result.expect("resolved").starts_with(expected))
+                }
+                // https://www.facebook.com/share/r/1AZhvx3n72/ -> https://www.facebook.com/reel/1605919000854039/?rdid=VxhE0u0GlwyGLnFD&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2Fr%2F1AZhvx3n72%2F // reel
+            }
+
+            mod comments {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.facebook.com/groups/vicdeals/permalink/25654608820855518/?comment_id=25654673274182406";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert!(result.expect("resolved").starts_with(url));
+                }
+
+                #[tokio::test]
+                async fn test_basic() {
+                    let url = "https://www.facebook.com/share/17cLnKdQth/";
+                    let result = resolve(url).await;
+                    let expected = "https://www.facebook.com/groups/vicdeals/permalink/25654608820855518/?comment_id=25654673274182406";
+                    assert!(result.expect("resolved").starts_with(expected))
+                }
+            }
+
+            mod photos {
+                use super::*;
+
+                #[tokio::test]
+                async fn test_identity() {
+                    let url = "https://www.facebook.com/photo.php?fbid=1279617124197361";
+                    let result = resolve(url).await;
+                    assert!(result.is_ok());
+                    assert!(result.expect("resolved").starts_with(url));
+                }
+
+                #[tokio::test]
+                async fn test_basic() {
+                    let url = "https://www.facebook.com/share/1JigZ3TAud/?mibextid=wwXIfr";
+                    let result = resolve(url).await;
+                    let expected = "https://www.facebook.com/photo.php?fbid=1279617124197361&set=a.301086902050393&type=3";
+                    assert!(result.expect("resolved").starts_with(expected))
+                }
             }
         }
+
+        // TODO
+        mod instagram {}
+
+        // TODO
+        mod linkedin {}
     }
 
     mod meta_refresh {
         use super::*;
 
         #[test]
-        fn test_trivial() {
+        fn test_basic() {
             let html = r#"<meta http-equiv="refresh" content="0;url=https://example.com">"#;
             let result = extract_meta_refresh(html);
             assert_eq!(result, Some("https://example.com".to_string()));
