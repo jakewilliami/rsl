@@ -1,5 +1,6 @@
 use std::{error::Error, pin::Pin};
 
+use backon::{ExponentialBuilder, Retryable};
 use ua_generator::ua::spoof_ua;
 
 type BoxError = Box<dyn Error>;
@@ -9,7 +10,31 @@ type ResolveFuture = Pin<Box<dyn Future<Output = ResolveOutput> + Send>>;
 // Resolve a URL to its final form.  This includes HTTP _and_ JS redirects; the latter
 // handled by `extract_meta_refresh`
 pub async fn resolve(url: &str) -> ResolveOutput {
-    resolve_helper(url.to_string(), 0).await
+    // This may not be strictly needed, but to increase robustness of the core
+    // resolver function, we implement expontentail backoff.
+    //
+    // The best API I could find from some quick research was in this project:
+    //   <https://github.com/ihrwein/backoff>
+    //
+    // The alternatives I found from a Google search were:
+    //   <https://github.com/jimmycuadra/retry>
+    //   <https://github.com/yoshuawuyts/exponential-backoff>
+    //
+    // But the APIs were clunky and the packages immature.  Unfortunately,
+    // the backoff library was abandomed, but I found a replacement that didn't
+    // come up in my Google search (which shows how obsolete traditional search engines
+    // are, as LLMs would understand the intent of what I was asking, not just searching
+    // literally for Rust crates called "backoff"):
+    //   <https://github.com/Xuanwo/backon>
+    //   <https://github.com/ihrwein/backoff/issues/66>
+    //
+    // This backon crate implements ExponentialBackoff, which we build with default
+    // parameters.  We default to three retries before exiting:
+    //   <https://docs.rs/backon/latest/backon/struct.ExponentialBuilder.html>
+    (|| async { resolve_helper(url.to_string(), 0).await })
+        .retry(ExponentialBuilder::default())
+        .when(|e| e.to_string() == "retryable")
+        .await
 }
 
 fn resolve_helper(url: String, depth: u32) -> ResolveFuture {

@@ -1,9 +1,10 @@
 [package]
 name = "rsl"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 [dependencies]
+backon = { version = "1.6.0", features = ["tokio-sleep"] }
 clap = { version = "4.5.54", features = ["cargo", "wrap_help", "derive"] }
 clipboard-anywhere = "0.2.3"
 copypasta-ext = "0.4.4"
