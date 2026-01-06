@@ -1,6 +1,7 @@
 use std::{error::Error, pin::Pin};
 
 use backon::{ExponentialBuilder, Retryable};
+use reqwest::header::{self, HeaderValue};
 use ua_generator::ua;
 
 type BoxError = Box<dyn Error>;
@@ -77,6 +78,28 @@ fn resolve_helper(url: String, depth: u32) -> ResolveFuture {
                 //     None,                          // RNG
                 // )
                 ua::spoof_chrome_ua()
+            })
+            .default_headers({
+                // We must specify some headers to convince Facebook that we are real.
+                //
+                // We seem to be able to use the deault headers, as long as we specify
+                // Accept, Sec-Fetch-Mode, and Cache-Control.  It seems that Accept-Language,
+                // Accept-Encoding, DNT, Connection, Upgrade-Insecure-Requests,
+                // Sec-Fetch-Dest, and Sec-Fetch-Site are not required.
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    header::ACCEPT,
+                    concat!(
+                        "text/html,",
+                        "application/xhtml+xml,application/xml;",
+                        "q=0.9,image/webp,*/*;q=0.8",
+                    )
+                    .parse()
+                    .unwrap(),
+                );
+                headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("max-age=0"));
+                headers.insert("Sec-Fetch-Mode", HeaderValue::from_static("navigate"));
+                headers
             })
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
