@@ -1,7 +1,7 @@
 use std::{error::Error, pin::Pin};
 
 use backon::{ExponentialBuilder, Retryable};
-use ua_generator::ua::spoof_ua;
+use ua_generator::ua;
 
 type BoxError = Box<dyn Error>;
 type ResolveOutput = Result<String, BoxError>;
@@ -45,20 +45,39 @@ fn resolve_helper(url: String, depth: u32) -> ResolveFuture {
         }
 
         // Create a client that follows redirects and mimics a real browser
-        //
-        // We generate a random user agent in the interest of privacy.  The best crate
-        // for doing this I found from brief research was:
-        //   <https://github.com/spider-rs/ua_generator>
-        //
-        // However, there are some other contenstants:
-        //   <https://github.com/Vrajs16/fake_user_agent>
-        //   <https://github.com/TrixSec/rand_agents>
-        //
-        // They all seem to be imitating this mature Python library which does the same:
-        //   <https://github.com/fake-useragent/fake-useragent>
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::limited(20)) // Allow up to 20 redirects
-            .user_agent(spoof_ua())
+            .user_agent({
+                // We generate a random user agent in the interest of privacy.  The best crate
+                // for doing this I found from brief research was:
+                //   <https://github.com/spider-rs/ua_generator>
+                //
+                // However, there are some other contenstants:
+                //   <https://github.com/Vrajs16/fake_user_agent>
+                //   <https://github.com/TrixSec/rand_agents>
+                //
+                // They all seem to be imitating this mature Python library which does the
+                // same:
+                //   <https://github.com/fake-useragent/fake-useragent>
+                //
+                // NOTE: we need a non-mobile user agent, as some servers will add unwanted
+                // subdomains into the URL if requesting from a mobile device.  As such, we
+                // generate a user agent with the `Desktop` `FormFactor`.
+                //   <github.com/spider-rs/ua_generator/blob/57cb3019/ua_generator/src/ua.rs#L312C8-L317>
+                //   <https://docs.rs/ua_generator/latest/ua_generator/ua/fn.spoof_by.html>
+                //
+                // TODO: it is not yet possible to generate a Desktop-only user agent, so
+                //   we use Chrome for now.  See spider-rs/ua_generator#7:
+                //   <https://github.com/spider-rs/ua_generator/issues/7>
+                //
+                // ua::spoof_by(
+                //     None,                          // OS
+                //     Some(ua::FormFactor::Desktop), // Form factor
+                //     None,                          // Browser
+                //     None,                          // RNG
+                // )
+                ua::spoof_chrome_ua()
+            })
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
 
