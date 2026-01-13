@@ -22,4 +22,4 @@ https://www.reddit.com/r/AskTheWorld/comments/1q2rw7m/comment/nxfc5ci
 
 ## Input Validation
 
-RSL support specific input validation for Reddit's share links.  We aim to support Facebook and Instagram soon.  An option will be implemented that will allow resolution without input validation.
+RSL supports specific input validation for Reddit, Facebook, and Instagram share links.  An option will be implemented that will allow resultion without input validation or special handling.

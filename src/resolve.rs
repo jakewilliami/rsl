@@ -353,8 +353,25 @@ mod tests {
             }
         }
 
-        // TODO
-        mod instagram {}
+        mod instagram {
+            use super::*;
+
+            #[tokio::test]
+            async fn test_identity() {
+                let url = "https://www.instagram.com/p/DS8F57NjS_S";
+                let result = resolve(url).await;
+                assert!(result.is_ok());
+                assert!(result.expect("resolved").starts_with(url));
+            }
+
+            #[tokio::test]
+            async fn test_basic() {
+                let url = "https://www.instagram.com/p/DS8F57NjS_S/?igsh=MWxidXNpbWV6djIxcQ==";
+                let result = resolve(url).await;
+                let expected = "https://www.instagram.com/p/DS8F57NjS_S";
+                assert!(result.expect("resolved").starts_with(expected))
+            }
+        }
 
         // TODO
         mod linkedin {}

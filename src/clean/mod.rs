@@ -6,6 +6,7 @@ use std::error::Error;
 use url::Url;
 
 mod facebook;
+mod instagram;
 mod reddit;
 
 // Error type for clean URL function
@@ -57,6 +58,7 @@ pub fn clean_url(url: &str) -> Result<String, CleanUrlError> {
         Some(domain) => match domain {
             "reddit.com" => &reddit::RedditCleaner,
             "facebook.com" => &facebook::FacebookCleaner,
+            "instagram.com" => &instagram::InstagramCleaner,
             _ => return Err(CleanUrlError::UnsupportedUrlHost),
         },
         _ => return Err(CleanUrlError::UnknownDomain),
@@ -250,8 +252,26 @@ mod tests {
             }
         }
 
-        // TODO
-        mod instagram {}
+        mod instagram {
+            use super::*;
+
+            #[test]
+            fn test_identity() {
+                let url = "https://www.instagram.com/p/DS8F57NjS_S";
+                let result = clean_url(url);
+                assert!(result.is_ok());
+                assert_eq!(url, result.expect("cleaned"));
+            }
+
+            #[test]
+            fn test_basic() {
+                let url = "https://www.instagram.com/p/DS8F57NjS_S/?igsh=MWxidXNpbWV6djIxcQ==";
+                let result = clean_url(url);
+                assert!(result.is_ok());
+                let expected = "https://www.instagram.com/p/DS8F57NjS_S";
+                assert_eq!(expected, result.expect("cleaned"));
+            }
+        }
 
         // TODO
         mod linkedin {}
