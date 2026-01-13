@@ -16,7 +16,7 @@ impl UrlCleaner for FacebookCleaner {
         // Step 2: remove trailing slash if any (provides no information)
         url.path_segments_mut()
             .map_err(|_| CleanUrlError::PathSegmentsError)?
-            .pop_if_empty(); // remove trailing slash if present
+            .pop_if_empty();
 
         let segments: Vec<_> = url
             .path_segments()

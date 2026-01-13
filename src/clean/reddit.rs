@@ -11,9 +11,9 @@ impl UrlCleaner for RedditCleaner {
         // Step 2: remove trailing slash if any (provides no information)
         url.path_segments_mut()
             .map_err(|_| CleanUrlError::PathSegmentsError)?
-            .pop_if_empty(); // remove trailing slash if present
+            .pop_if_empty();
 
-        // Step 3: possibly remove trailing path (additional post information)
+        // Step 3: collect path segments
         let segments: Vec<_> = url
             .path_segments()
             .ok_or(CleanUrlError::PathSegmentsError)?
