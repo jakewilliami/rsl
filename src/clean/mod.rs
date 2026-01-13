@@ -6,7 +6,7 @@ use std::error::Error;
 use url::Url;
 
 mod facebook;
-mod instagram;
+mod generic;
 mod reddit;
 
 // Error type for clean URL function
@@ -58,7 +58,8 @@ pub fn clean_url(url: &str) -> Result<String, CleanUrlError> {
         Some(domain) => match domain {
             "reddit.com" => &reddit::RedditCleaner,
             "facebook.com" => &facebook::FacebookCleaner,
-            "instagram.com" => &instagram::InstagramCleaner,
+            "instagram.com" => &generic::GenericCleaner,
+            "linkedin.com" => &generic::GenericCleaner,
             _ => return Err(CleanUrlError::UnsupportedUrlHost),
         },
         _ => return Err(CleanUrlError::UnknownDomain),
@@ -273,8 +274,26 @@ mod tests {
             }
         }
 
-        // TODO
-        mod linkedin {}
+        mod linkedin {
+            use super::*;
+
+            #[test]
+            fn test_identity() {
+                let url = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj";
+                let result = clean_url(url);
+                assert!(result.is_ok());
+                assert_eq!(url, result.expect("cleaned"));
+            }
+
+            #[test]
+            fn test_basic() {
+                let url = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj?utm_source=share&utm_medium=member_desktop&rcm=ACoAAGLnhZIB3taWr06FFIEsRcT5ekzKWtFC83A";
+                let result = clean_url(url);
+                assert!(result.is_ok());
+                let expected = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj";
+                assert_eq!(expected, result.expect("cleaned"));
+            }
+        }
     }
 
     mod errors {

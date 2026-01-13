@@ -373,8 +373,25 @@ mod tests {
             }
         }
 
-        // TODO
-        mod linkedin {}
+        mod linkedin {
+            use super::*;
+
+            #[tokio::test]
+            async fn test_identity() {
+                let url = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj";
+                let result = resolve(url).await;
+                assert!(result.is_ok());
+                assert!(result.expect("resolved").starts_with(url));
+            }
+
+            #[tokio::test]
+            async fn test_basic() {
+                let url = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj?utm_source=share&utm_medium=member_desktop&rcm=ACoAAGLnhZIB3taWr06FFIEsRcT5ekzKWtFC83A";
+                let result = resolve(url).await;
+                let expected = "https://www.linkedin.com/posts/robert-a-saigh-7b2b05359_i-have-warned-about-this-before-ai-is-activity-7415393290201534464-seUj";
+                assert!(result.expect("resolved").starts_with(expected))
+            }
+        }
     }
 
     mod meta_refresh {

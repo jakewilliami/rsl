@@ -1,9 +1,11 @@
 use super::{CleanUrlError, UrlCleaner};
 use url::Url;
 
-pub struct InstagramCleaner;
+pub struct GenericCleaner;
 
-impl UrlCleaner for InstagramCleaner {
+impl UrlCleaner for GenericCleaner {
+    // A generic cleaner to strip query parameters, such as igsh (for Instragram share
+    // links) rcm (for LinkedIn), and utm_* parameters
     fn clean(&self, url: &mut Url) -> Result<(), CleanUrlError> {
         // Step 1: remove query parameters
         //
