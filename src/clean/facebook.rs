@@ -41,12 +41,14 @@ impl UrlCleaner for FacebookCleaner {
 
         // Step 4: we need to conditionally add some query parameters
 
-        // Case 4.1: the link is a permalink
-        if matches!(segments.as_slice(), ["permalink.php"]) {
-            // 4.1 a: the permalink is for a story; we need to add the story ID and
-            //   (presumably poster's) ID
+        // Case 4.2: the link is a story
+        if matches!(segments.as_slice(), ["permalink.php"])
+            || matches!(segments.as_slice(), ["story.php"])
+        {
+            // We need to add the story ID and (presumably poster's) ID
             //
-            // https://www.facebook.com/permalink.php?story_fbid=<story ID>&id=<id>
+            // https://www.facebook.com/permalink.php?story_fbid=<story ID>&id=<ID>
+            // https://www.facebook.com/story.php?story_fbid=<story ID>&id=<ID>
             if let Some(story_fbid) = params.get("story_fbid") {
                 url.query_pairs_mut()
                     .append_pair("story_fbid", story_fbid)
@@ -54,8 +56,11 @@ impl UrlCleaner for FacebookCleaner {
                 return Ok(());
             }
             unreachable!()
-        } else if matches!(segments.as_slice(), ["photo.php"]) {
-            // 4.1 b: the permalink is for a photo; we need to add its ID back
+        }
+
+        // Case 4.2: the link is for a photo
+        if matches!(segments.as_slice(), ["photo.php"]) {
+            // We need to add its ID back
             //
             // https://www.facebook.com/photo.php?fbid=<photo ID>
             url.query_pairs_mut()
@@ -63,7 +68,7 @@ impl UrlCleaner for FacebookCleaner {
             return Ok(());
         }
 
-        // Case 4.2: the link is a group post permalink containing a comment
+        // Case 4.3: the link is a group post permalink containing a comment
         //
         // https://www.facebook.com/groups/<group>/permalink/25654608820855518/?comment_id=<commend ID>
         if is_group_post && params.contains_key("comment_id") {
